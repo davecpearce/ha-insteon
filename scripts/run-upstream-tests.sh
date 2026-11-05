@@ -63,6 +63,10 @@ rm -rf homeassistant/components/insteon
 cp -R "$REPO/custom_components/insteon" homeassistant/components/insteon
 cp "$REPO"/tests/test_*.py tests/components/insteon/
 build_translations
+# A custom integration must ship what core generates at build time: copy the
+# resolved translations back so translations/en.json never drifts from strings.json.
+cp homeassistant/components/insteon/translations/en.json "$REPO/custom_components/insteon/translations/en.json"
 run || true
 git checkout -q -- homeassistant/components/insteon 2>/dev/null || true
+rm -rf homeassistant/components/insteon/translations
 rm -f tests/components/insteon/test_set_device_property_service.py
