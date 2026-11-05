@@ -209,7 +209,7 @@ on purpose: core pins it, and pinning it here would fight core's pin on future r
 The repository URL to add in HACS is:
 
 ```
-https://github.com/davecpearce/hacs_insteon
+https://github.com/davecpearce/ha-insteon
 ```
 
 1. In Home Assistant open **HACS**, click the **⋮** menu in the top right, choose

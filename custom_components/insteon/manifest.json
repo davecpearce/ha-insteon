@@ -15,10 +15,10 @@
       "registered_devices": true
     }
   ],
-  "documentation": "https://github.com/davecpearce/hacs_insteon",
+  "documentation": "https://github.com/davecpearce/ha-insteon",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/davecpearce/hacs_insteon/issues",
+  "issue_tracker": "https://github.com/davecpearce/ha-insteon/issues",
   "loggers": ["pyinsteon", "pypubsub"],
   "requirements": ["pyinsteon>=1.7.0,<1.8", "insteon-frontend-home-assistant>=0.7.0,<0.8"],
   "single_config_entry": true,
