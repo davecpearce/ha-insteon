@@ -199,8 +199,9 @@ Everything else is byte-identical to core 2026.11.0.
 | v1.1.x | 2026.8.x to 2026.10.x | Based on core 2026.9.1. Loads on 2026.11 too, with deprecation warnings in the log. |
 | v1.0.x | 2026.8.x only | Behaviour-identical to the pre-HACS fork. |
 
-Pinned requirements match core exactly: `pyinsteon==1.7.0`,
-`insteon-frontend-home-assistant==0.7.0`. `probatio` is not declared as a requirement
+Requirements are `pyinsteon>=1.7.0,<1.8` and `insteon-frontend-home-assistant>=0.7.0,<0.8`:
+the versions core 2026.11 pins, with room for patch releases. Hassfest rejects exact pins
+on packages core itself depends on. `probatio` is not declared as a requirement
 on purpose: core pins it, and pinning it here would fight core's pin on future releases.
 
 ## Installation
