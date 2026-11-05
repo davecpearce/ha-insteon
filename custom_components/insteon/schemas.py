@@ -4,6 +4,7 @@ import probatio
 from pyinsteon.constants import HC_LOOKUP
 
 from homeassistant.const import (
+    ATTR_DEVICE_ID,
     CONF_ADDRESS,
     CONF_DEVICE,
     CONF_ENTITY_ID,
@@ -17,14 +18,13 @@ from homeassistant.const import (
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    ATTR_PROPERTY,
+    ATTR_VALUE,
     CONF_CAT,
     CONF_DIM_STEPS,
     CONF_HOUSECODE,
     CONF_HUB_VERSION,
-    CONF_PROP_NAME,
-    CONF_PROP_VALUE,
     CONF_SUBCAT,
-    CONF_TARGET_DEVICE,
     CONF_UNITCODE,
     HOUSECODES,
     PORT_HUB_V1,
@@ -78,11 +78,11 @@ ADD_DEFAULT_LINKS_SCHEMA = probatio.Schema(
     {probatio.Required(CONF_ENTITY_ID): cv.entity_id}
 )
 
-UPDATE_PROPERTY_SCHEMA = probatio.Schema(
+SET_DEVICE_PROPERTY_SCHEMA = probatio.Schema(
     {
-        probatio.Required(CONF_TARGET_DEVICE): cv.string,
-        probatio.Required(CONF_PROP_NAME): cv.string,
-        probatio.Required(CONF_PROP_VALUE): cv.string,
+        probatio.Required(ATTR_DEVICE_ID): cv.string,
+        probatio.Required(ATTR_PROPERTY): cv.string,
+        probatio.Required(ATTR_VALUE): cv.string,
     }
 )
 

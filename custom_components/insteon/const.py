@@ -73,9 +73,8 @@ CONF_X10_ALL_UNITS_OFF = "x10_all_units_off"
 CONF_X10_ALL_LIGHTS_ON = "x10_all_lights_on"
 CONF_X10_ALL_LIGHTS_OFF = "x10_all_lights_off"
 CONF_DEV_PATH = "dev_path"
-CONF_TARGET_DEVICE = "target_device"
-CONF_PROP_NAME = "prop_name"
-CONF_PROP_VALUE = "prop_value"
+ATTR_PROPERTY = "property"
+ATTR_VALUE = "value"
 
 PORT_HUB_V1 = 9761
 PORT_HUB_V2 = 25105
@@ -97,7 +96,7 @@ SRV_HOUSECODE = "housecode"
 SRV_SCENE_ON = "scene_on"
 SRV_SCENE_OFF = "scene_off"
 SRV_ADD_DEFAULT_LINKS = "add_default_links"
-SRV_UPDATE_PROPERTY = "update_property"
+SRV_SET_DEVICE_PROPERTY = "set_device_property"
 
 SIGNAL_LOAD_ALDB = "load_aldb"
 SIGNAL_PRINT_ALDB = "print_aldb"

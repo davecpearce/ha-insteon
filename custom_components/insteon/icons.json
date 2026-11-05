@@ -32,6 +32,9 @@
     },
     "x10_all_units_off": {
       "service": "mdi:power-off"
+    },
+    "set_device_property": {
+      "service": "mdi:tune"
     }
   }
 }

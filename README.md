@@ -12,7 +12,7 @@ to them and the Home Assistant project; this repo only adds a small service on t
 
 ## What it adds
 
-### `insteon.update_property` service
+### `insteon.set_device_property` action
 
 Write a device configuration property (operating flag or extended property) to an Insteon
 device from an automation or script, then persist it. Core only exposes this through the
@@ -20,32 +20,32 @@ Insteon panel UI.
 
 | Field | Type | Notes |
 |---|---|---|
-| `target_device` | device id | An Insteon device from the device registry |
-| `prop_name` | string | e.g. `led_off`, `led_dimming`, `on_level`, `ramp_rate`, `toggle_mode` |
-| `prop_value` | string | Parsed as `bool` (`"true"`/`"false"`) or `int` depending on the property's type |
+| `device_id` | device id | An Insteon device from the device registry |
+| `property` | string | e.g. `led_off`, `led_dimming`, `on_level`, `ramp_rate_in_seconds`, `toggle_button_a` |
+| `value` | string | Parsed by the property's type, see below |
 
 Example: dim the keypad LEDs on every device labelled `Insteon LED Control`:
 
 ```yaml
-action: insteon.update_property
+action: insteon.set_device_property
 data:
-  target_device: "{{ device_id }}"
-  prop_name: led_off
-  prop_value: "true"
+  device_id: "{{ device_id }}"
+  property: led_off
+  value: "true"
 ```
 
-Raises `ServiceValidationError` if the device, address, or property is not found, or if
-the device rejects the write.
+Raises a translated validation error if the device, address, property or value is not
+valid, and a `HomeAssistantError` if the device rejects the write.
 
 ### Property names and values
 
-`prop_name` is the name the Insteon panel shows for the device, and the set available
+`property` is the name the Insteon panel shows for the device, and the set available
 depends on the device type. In the Actions panel both fields are dropdowns you can also
-type into: `prop_name` lists every known property, `prop_value` lists the fixed choices
-(booleans and mode names) and takes numbers as free text. `prop_value` is always text; it
-is parsed by the property's type:
+type into: `property` lists every known property, `value` lists the fixed choices
+(booleans and mode names) and takes numbers as free text. `value` is always text; it is
+parsed by the property's type:
 
-| Type | Accepted `prop_value` |
+| Type | Accepted `value` |
 |---|---|
 | bool | `true` / `false`, also `on` / `off`, `yes` / `no`, `1` / `0` |
 | int | a whole number, e.g. `on_level` is 0 to 255 |
@@ -127,7 +127,7 @@ core `2026.11.0`, which v1.2 is based on (`UPSTREAM_BASE` records the tag).
 
 | Area | Change | Why |
 |---|---|---|
-| `services.py`, `schemas.py`, `const.py`, `services.yaml`, `strings.json` | `update_property` action | Feature |
+| `services.py`, `schemas.py`, `const.py`, `services.yaml`, `strings.json`, `icons.json` | `set_device_property` action | Feature, proposed for core |
 | `light.py` | Debug logging of brightness in `brightness` and `async_turn_on` | Harmless diagnostics |
 | `api/__init__.py` | Registers the Insteon panel with a sidebar title and icon, so it appears in the sidebar as well as behind the integration's Configure gear | Feature |
 | `manifest.json` | Adds `version` and `issue_tracker`, points `documentation` at this repo | Required for custom components |
@@ -135,7 +135,15 @@ core `2026.11.0`, which v1.2 is based on (`UPSTREAM_BASE` records the tag).
 
 Everything else is byte-identical to core 2026.11.0.
 
-## Changes in v1.2.0
+## Changes in v1.3.0
+
+- **`update_property` is now `set_device_property`**, reshaped to Home Assistant core's
+  conventions so it can be proposed upstream unchanged: the device is targeted through
+  `device_id`, the fields are `property` and `value`, errors are translated messages,
+  a rejected write raises `HomeAssistantError`, and the handler calls the panel's own
+  `update_property` so the action and the panel cannot drift. **Automations that used
+  `insteon.update_property` must be updated**; there is no alias.
+
 
 - **Rebased on core 2026.11.0.** Picks up two core releases of Insteon work: the move from
   voluptuous to probatio throughout, `pyinsteon` 1.7.0 (i3 device link-database loads,
@@ -267,7 +275,7 @@ files differ from the new core. Then:
 - **Upstream changed files**: copy the new core files over `custom_components/insteon`,
   re-apply the fork touches listed under *Other differences from core* (they are small:
   the `compat.py` import in two `api/` files, the sidebar title and icon in
-  `api/__init__.py`, the `update_property` action across
+  `api/__init__.py`, the `set_device_property` action across
   `const.py`, `schemas.py`, `services.py`, `services.yaml`, `strings.json`, the
   `light.py` debug logging, and the `manifest.json` packaging keys), run
   `scripts/run-upstream-tests.sh <tag>` and expect zero failures, then bump
