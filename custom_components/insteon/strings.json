@@ -263,5 +263,17 @@
         }
       }
     }
+  },
+  "entity": {
+    "number": {
+      "led_brightness": {
+        "name": "LED brightness"
+      }
+    },
+    "switch": {
+      "led": {
+        "name": "LED"
+      }
+    }
   }
 }

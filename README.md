@@ -120,6 +120,31 @@ through `_8` and `ramp_rate_2` through `_8` (per-button, raw 0 to 31 for ramp ra
 and thermostat `temp_offset`, `humidity_offset`. Prefer the derived setting where one
 exists (`ramp_rate_in_seconds` over `ramp_rate`).
 
+### LED backlight entities
+
+Every dimmer, switch and keypad that has an LED backlight gets two entities, under
+**Configuration** on its device page:
+
+| Entity | Property | Notes |
+|---|---|---|
+| `number.<device>_led_brightness` | `led_dimming` | 0 to 127 |
+| `switch.<device>_led` | `led_off`, inverted | on means the LED is lit |
+
+They are **disabled by default**, so nothing appears until you enable the ones you want.
+Values come from what pyinsteon has read or written for the device, which is also what
+the Insteon panel shows, and update when the panel, the action or the device read changes
+them. A write goes through the same call the panel uses; if the device rejects it the
+entity keeps its previous state and the call raises. `homeassistant.update_entity` on one
+of them re-reads the device's configuration.
+
+The LED automation above becomes:
+
+```yaml
+action: switch.turn_off
+target:
+  entity_id: switch.bedroom_entrance_keypad_led
+```
+
 ## Other differences from core
 
 Documented here so they are deliberate rather than accidental. Measured against
@@ -128,12 +153,19 @@ core `2026.11.0`, which v1.2 is based on (`UPSTREAM_BASE` records the tag).
 | Area | Change | Why |
 |---|---|---|
 | `services.py`, `schemas.py`, `const.py`, `services.yaml`, `strings.json`, `icons.json` | `set_device_property` action | Feature, proposed for core |
+| `property_entity.py`, `number.py`, `switch.py`, `const.py`, `strings.json`, `icons.json` | LED brightness number and LED switch entities | Feature, proposed for core |
 | `light.py` | Debug logging of brightness in `brightness` and `async_turn_on` | Harmless diagnostics |
 | `api/__init__.py` | Registers the Insteon panel with a sidebar title and icon, so it appears in the sidebar as well as behind the integration's Configure gear | Feature |
 | `manifest.json` | Adds `version` and `issue_tracker`, points `documentation` at this repo | Required for custom components |
 | `brand/` | Insteon icon, the same asset core uses | Required by HACS |
 
 Everything else is byte-identical to core 2026.11.0.
+
+## Changes in v1.4.0
+
+- **LED backlight entities**: a `number` for brightness and a `switch` for the LED on
+  every device that has them, config category, disabled by default. The same thing
+  core's feature-request discussion #4454 asked for, built as a companion to the action.
 
 ## Changes in v1.3.0
 
@@ -275,7 +307,8 @@ files differ from the new core. Then:
 - **Upstream changed files**: copy the new core files over `custom_components/insteon`,
   re-apply the fork touches listed under *Other differences from core* (they are small:
   the `compat.py` import in two `api/` files, the sidebar title and icon in
-  `api/__init__.py`, the `set_device_property` action across
+  `api/__init__.py`, `property_entity.py` + `number.py` and the two lines in `switch.py`
+  and `const.py` that wire the LED entities in, the `set_device_property` action across
   `const.py`, `schemas.py`, `services.py`, `services.yaml`, `strings.json`, the
   `light.py` debug logging, and the `manifest.json` packaging keys), run
   `scripts/run-upstream-tests.sh <tag>` and expect zero failures, then bump
