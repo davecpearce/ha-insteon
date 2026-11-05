@@ -46,6 +46,7 @@ INSTEON_PLATFORMS = [
     Platform.FAN,
     Platform.LIGHT,
     Platform.LOCK,
+    Platform.NUMBER,
     Platform.SWITCH,
 ]
 

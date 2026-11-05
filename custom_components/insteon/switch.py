@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import SIGNAL_ADD_ENTITIES
 from .entity import InsteonEntity
+from .property_entity import InsteonLedSwitch, async_setup_property_entities
 from .utils import async_add_insteon_devices, async_add_insteon_entities
 
 
@@ -40,6 +41,8 @@ async def async_setup_entry(
         InsteonSwitchEntity,
         async_add_entities,
     )
+    # Fork: LED backlight switch per device that has the led_off flag.
+    async_setup_property_entities(hass, async_add_entities, InsteonLedSwitch)
 
 
 class InsteonSwitchEntity(InsteonEntity, SwitchEntity):

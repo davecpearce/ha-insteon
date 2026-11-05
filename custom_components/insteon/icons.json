@@ -36,5 +36,20 @@
     "set_device_property": {
       "service": "mdi:tune"
     }
+  },
+  "entity": {
+    "number": {
+      "led_brightness": {
+        "default": "mdi:brightness-6"
+      }
+    },
+    "switch": {
+      "led": {
+        "default": "mdi:led-on",
+        "state": {
+          "off": "mdi:led-off"
+        }
+      }
+    }
   }
 }
