@@ -47,6 +47,11 @@
       }
     }
   },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Insteon is not loaded."
+    }
+  },
   "options": {
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
@@ -236,7 +241,7 @@
         },
         "prop_value": {
           "name": "Value",
-          "description": "New value as text. Booleans accept true/false, numbers are parsed, and mode properties accept their mode name."
+          "description": "New value as text. Booleans accept true/false, numbers are parsed and range-checked, and mode properties accept their mode name."
         }
       }
     }

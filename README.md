@@ -110,21 +110,45 @@ take a suffix: `toggle_button_a` through `toggle_button_h`.
 
 Read-only properties are shown in the panel but rejected by the device on write.
 
+**Advanced properties.** The dropdown lists the standard set above. The raw per-button
+values behind them are accepted by name as well, exactly as the panel's "show advanced"
+view exposes them: `on_mask`, `off_mask`, `non_toggle_mask`, `non_toggle_on_off_mask`,
+`trigger_group_mask` (button bitmasks, limited to the device's buttons), `on_level_2`
+through `_8` and `ramp_rate_2` through `_8` (per-button, raw 0 to 31 for ramp rate),
+`x10_house` / `x10_unit` and their per-button variants, I/O Linc `delay`, `prescaler`,
+`momentary_on`, `momentary_follow_sense`, `momentary_on_off_trigger`, `relay_on_sense_on`,
+and thermostat `temp_offset`, `humidity_offset`. Prefer the derived setting where one
+exists (`ramp_rate_in_seconds` over `ramp_rate`).
+
 ## Other differences from core
 
 Documented here so they are deliberate rather than accidental. Measured against
-core `2026.9.1`, which v1.1 is based on.
+core `2026.11.0`, which v1.2 is based on (`UPSTREAM_BASE` records the tag).
 
 | Area | Change | Why |
 |---|---|---|
 | `services.py`, `schemas.py`, `const.py`, `services.yaml`, `strings.json` | `update_property` action | Feature |
-| `compat.py`, `api/config.py`, `api/properties.py` | Schema serialisation goes through a shim that imports `probatio` (HA 2026.9+) and falls back to `voluptuous_serialize` (HA 2026.8) | One build runs on both HA versions |
 | `light.py` | Debug logging of brightness in `brightness` and `async_turn_on` | Harmless diagnostics |
 | `api/__init__.py` | Registers the Insteon panel with a sidebar title and icon, so it appears in the sidebar as well as behind the integration's Configure gear | Feature |
 | `manifest.json` | Adds `version` and `issue_tracker`, points `documentation` at this repo | Required for custom components |
 | `brand/` | Insteon icon, the same asset core uses | Required by HACS |
 
-Everything else is byte-identical to core 2026.9.1.
+Everything else is byte-identical to core 2026.11.0.
+
+## Changes in v1.2.0
+
+- **Rebased on core 2026.11.0.** Picks up two core releases of Insteon work: the move from
+  voluptuous to probatio throughout, `pyinsteon` 1.7.0 (i3 device link-database loads,
+  modem write fixes, back-off for unresponsive devices, atomic device cache) and panel
+  frontend 0.7.0, range and button-mask validation for integer properties in the panel,
+  actions that refuse to run while the integration is not loaded, service signals that
+  survive an entity rename, and the climate entity's new `native_*` properties.
+- **Requires Home Assistant 2026.11 or newer.** The 2026.8 serializer shim is gone and the
+  climate entity uses an API that only exists from 2026.11.
+- **`update_property` matches the panel's new behaviour**: integers are range-checked
+  (ramp rates 0 to 31, LED brightness 0 to 127, button masks limited to the device's
+  buttons), advanced properties that are not part of `device.configuration` can be
+  written by name, and the action refuses to run while the integration is not loaded.
 
 ## Changes in v1.1.3
 
@@ -171,11 +195,12 @@ Everything else is byte-identical to core 2026.9.1.
 
 | Release | Home Assistant | Notes |
 |---|---|---|
-| v1.1.x | 2026.8.x and 2026.9.x | Based on core 2026.9.1. Verified against core's own Insteon test suite at both 2026.8.3 and 2026.9.1. |
-| v1.0.x | 2026.8.x only | Behaviour-identical to the pre-HACS fork. Does not load on 2026.9. |
+| v1.2.x | 2026.11.x | Based on core 2026.11.0. Verified against core's own Insteon test suite at 2026.11.0. |
+| v1.1.x | 2026.8.x to 2026.10.x | Based on core 2026.9.1. Loads on 2026.11 too, with deprecation warnings in the log. |
+| v1.0.x | 2026.8.x only | Behaviour-identical to the pre-HACS fork. |
 
-Pinned requirements match core exactly: `pyinsteon==1.6.4`,
-`insteon-frontend-home-assistant==0.6.2`. `probatio` is not declared as a requirement
+Pinned requirements match core exactly: `pyinsteon==1.7.0`,
+`insteon-frontend-home-assistant==0.7.0`. `probatio` is not declared as a requirement
 on purpose: core pins it, and pinning it here would fight core's pin on future releases.
 
 ## Installation
@@ -212,18 +237,15 @@ so it is the strongest check available. This repo's own tests in `tests/` are co
 alongside it.
 
 ```bash
-scripts/run-upstream-tests.sh 2026.9.1
-scripts/run-upstream-tests.sh 2026.8.3
+scripts/run-upstream-tests.sh 2026.11.0
 ```
 
-Each run clones core at that tag, builds a venv, generates translations, runs the
-suite on stock core for a baseline, then again with this `custom_components/insteon`
-swapped in. Expected result: everything stock passes also passes here, plus this
+Each run clones core at that tag, builds a venv (including core's in-repo
+`pytest-homeassistant` package, which the harness needs from 2026.11), generates
+translations, runs the suite on stock core for a baseline, then again with this
+`custom_components/insteon` swapped in. Expected result: everything stock passes also passes here, plus this
 repo's own tests. See the release notes for the exact numbers per tag.
 
-Known upstream flake: on core 2026.9.1, `test_api_properties.py::test_get_read_only_properties`
-sometimes reports a lingering-task error at teardown when the file runs as a whole. Stock
-core shows the same, and the test passes in isolation.
 
 ## Keeping up with Home Assistant releases
 
@@ -232,7 +254,7 @@ on. `UPSTREAM_BASE` records the core tag the current code was taken from. On eac
 Home Assistant release:
 
 ```bash
-scripts/upstream-diff.sh 2026.10.0
+scripts/upstream-diff.sh 2026.12.0
 ```
 
 That prints what changed in core's Insteon integration since the base tag, whether the

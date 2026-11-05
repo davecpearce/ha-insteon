@@ -39,6 +39,10 @@ print("\n".join(reqs))
 PY
   uv pip install -q --python .venv/bin/python -c homeassistant/package_constraints.txt \
     -e . -r requirements_test.txt -r .insteon-test-reqs.txt
+  # Since core 2026.11 the test harness lives in an in-repo package.
+  if [ -d packages/pytest-homeassistant ]; then
+    uv pip install -q --python .venv/bin/python -e packages/pytest-homeassistant
+  fi
 fi
 
 # The harness checks that every registered service has translations. Those are

@@ -1,8 +1,9 @@
-"""Services used by the Insteon component."""
+"""Utilities used by insteon component."""
 
 import asyncio
 import logging
 
+import probatio
 from pyinsteon import devices
 from pyinsteon.address import Address
 from pyinsteon.constants import RelayMode, ResponseStatus, ToggleMode
@@ -86,16 +87,18 @@ from .schemas import (
     UPDATE_PROPERTY_SCHEMA,
     X10_HOUSECODE_SCHEMA,
 )
+from .api.properties import _validate_int
 from .utils import print_aldb_to_log
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _coerce_property_value(prop, raw: str):
+def _coerce_property_value(prop, name: str, raw: str, groups):
     """Convert the string a service call carries into the property's native type.
 
     Mirrors what the Insteon panel does through the websocket API, but the
-    service schema only accepts strings so the parsing lives here.
+    service schema only accepts strings so the parsing lives here. Integers go
+    through the same range and button-mask validation as the panel.
     """
     value_type = prop.value_type
     if value_type is bool:
@@ -106,7 +109,7 @@ def _coerce_property_value(prop, raw: str):
             return False
         raise ValueError(f"expected true/false, got {raw!r}")
     if value_type is int:
-        return int(raw)
+        return _validate_int(name, raw, groups)
     if value_type is float:
         return float(raw)
     if value_type in (ToggleMode, RelayMode):
@@ -124,6 +127,15 @@ def _coerce_property_value(prop, raw: str):
 
 
 @callback
+def _async_check_loaded(hass: HomeAssistant) -> None:
+    """Raise if the Insteon config entry is not loaded."""
+    if not hass.config_entries.async_loaded_entries(DOMAIN):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="not_loaded"
+        )
+
+
+@callback
 def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     """Register services used by insteon component."""
 
@@ -131,6 +143,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     async def async_srv_add_all_link(service: ServiceCall) -> None:
         """Add an INSTEON All-Link between two devices."""
+        _async_check_loaded(hass)
         group = service.data[SRV_ALL_LINK_GROUP]
         mode = service.data[SRV_ALL_LINK_MODE]
         link_mode = mode.lower() == SRV_CONTROLLER
@@ -138,11 +151,13 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     async def async_srv_del_all_link(service: ServiceCall) -> None:
         """Delete an INSTEON All-Link between two devices."""
+        _async_check_loaded(hass)
         group = service.data.get(SRV_ALL_LINK_GROUP)
         await async_enter_unlinking_mode(group)
 
     async def async_srv_load_aldb(service: ServiceCall) -> None:
         """Load the device All-Link database."""
+        _async_check_loaded(hass)
         entity_id = service.data[CONF_ENTITY_ID]
         reload = service.data[SRV_LOAD_DB_RELOAD]
         if entity_id.lower() == ENTITY_MATCH_ALL:
@@ -168,6 +183,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     def print_aldb(service: ServiceCall) -> None:
         """Print the All-Link Database for a device."""
+        _async_check_loaded(hass)
         # For now this sends logs to the log file.
         # Future direction is to create an INSTEON control panel.
         entity_id = service.data[CONF_ENTITY_ID]
@@ -176,6 +192,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     def print_im_aldb(service: ServiceCall) -> None:
         """Print the All-Link Database for a device."""
+        _async_check_loaded(hass)
         # For now this sends logs to the log file.
         # Future direction is to create an INSTEON control panel.
         print_aldb_to_log(devices.modem.aldb)
@@ -187,6 +204,7 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         an action so automations can change device settings (LED brightness,
         ramp rate, ...).
         """
+        _async_check_loaded(hass)
         target_device = service.data[CONF_TARGET_DEVICE]
         prop_name = service.data[CONF_PROP_NAME]
         prop_value = service.data[CONF_PROP_VALUE]
@@ -218,19 +236,26 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                 f"Insteon device not found for address {insteon_address}"
             )
 
-        # device.configuration is the union of operating flags, extended
-        # properties and derived settings (ramp rate in seconds, radio button
-        # groups, momentary delay, ...). Looking only at operating_flags and
-        # properties silently misses the derived ones.
-        prop = insteon_device.configuration.get(prop_name)
-        if prop is None:
+        # Same lookup order as the panel: configuration holds the standard
+        # properties and derived settings, the other two hold advanced ones.
+        for props in (
+            insteon_device.configuration,
+            insteon_device.operating_flags,
+            insteon_device.properties,
+        ):
+            if prop_name in props:
+                prop = props[prop_name]
+                break
+        else:
             raise ServiceValidationError(
                 f"Property {prop_name} not found on device {insteon_address}"
             )
 
         try:
-            prop.new_value = _coerce_property_value(prop, prop_value)
-        except (TypeError, ValueError) as err:
+            prop.new_value = _coerce_property_value(
+                prop, prop_name, prop_value, insteon_device.groups
+            )
+        except (TypeError, ValueError, probatio.Invalid) as err:
             raise ServiceValidationError(
                 f"Invalid value for property {prop_name}: {err}"
             ) from err
@@ -245,32 +270,38 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
     async def async_srv_x10_all_units_off(service: ServiceCall) -> None:
         """Send the X10 All Units Off command."""
+        _async_check_loaded(hass)
         housecode = service.data.get(SRV_HOUSECODE)
         await async_x10_all_units_off(housecode)
 
     async def async_srv_x10_all_lights_off(service: ServiceCall) -> None:
         """Send the X10 All Lights Off command."""
+        _async_check_loaded(hass)
         housecode = service.data.get(SRV_HOUSECODE)
         await async_x10_all_lights_off(housecode)
 
     async def async_srv_x10_all_lights_on(service: ServiceCall) -> None:
         """Send the X10 All Lights On command."""
+        _async_check_loaded(hass)
         housecode = service.data.get(SRV_HOUSECODE)
         await async_x10_all_lights_on(housecode)
 
     async def async_srv_scene_on(service: ServiceCall) -> None:
         """Trigger an INSTEON scene ON."""
+        _async_check_loaded(hass)
         group = service.data.get(SRV_ALL_LINK_GROUP)
         await async_trigger_scene_on(group)
 
     async def async_srv_scene_off(service: ServiceCall) -> None:
         """Trigger an INSTEON scene ON."""
+        _async_check_loaded(hass)
         group = service.data.get(SRV_ALL_LINK_GROUP)
         await async_trigger_scene_off(group)
 
     @callback
     def async_add_default_links(service: ServiceCall) -> None:
         """Add the default All-Link entries to a device."""
+        _async_check_loaded(hass)
         entity_id = service.data[CONF_ENTITY_ID]
         signal = f"{entity_id}_{SIGNAL_ADD_DEFAULT_LINKS}"
         async_dispatcher_send(hass, signal)

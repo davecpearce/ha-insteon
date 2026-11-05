@@ -2,8 +2,10 @@
   "domain": "insteon",
   "name": "Insteon",
   "after_dependencies": ["panel_custom"],
+  "categories": ["hubs_protocols.wireless_protocols"],
   "codeowners": ["@teharris1", "@ssyrell", "@connorgallopo"],
   "config_flow": true,
+  "connectivity": ["insteon"],
   "dependencies": ["http", "usb", "websocket_api"],
   "dhcp": [
     {
@@ -18,12 +20,12 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/davecpearce/hacs_insteon/issues",
   "loggers": ["pyinsteon", "pypubsub"],
-  "requirements": ["pyinsteon==1.6.4", "insteon-frontend-home-assistant==0.6.2"],
+  "requirements": ["pyinsteon==1.7.0", "insteon-frontend-home-assistant==0.7.0"],
   "single_config_entry": true,
   "usb": [
     {
       "vid": "10BF"
     }
   ],
-  "version": "1.1.3"
+  "version": "1.2.0"
 }
