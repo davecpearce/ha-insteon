@@ -65,4 +65,4 @@ cp "$REPO"/tests/test_*.py tests/components/insteon/
 build_translations
 run || true
 git checkout -q -- homeassistant/components/insteon 2>/dev/null || true
-rm -f tests/components/insteon/test_update_property_service.py
+rm -f tests/components/insteon/test_set_device_property_service.py

@@ -50,6 +50,24 @@
   "exceptions": {
     "not_loaded": {
       "message": "Insteon is not loaded."
+    },
+    "device_not_found": {
+      "message": "Device {device_id} was not found."
+    },
+    "not_insteon_device": {
+      "message": "Device {device_id} is not an Insteon device."
+    },
+    "insteon_device_not_found": {
+      "message": "No Insteon device with address {address} is known to the modem."
+    },
+    "property_not_found": {
+      "message": "Property {property} does not exist on device {address}."
+    },
+    "invalid_value": {
+      "message": "{value} is not a valid value for {property}: {error}"
+    },
+    "write_failed": {
+      "message": "Device {address} did not accept the write of {property}: {result}"
     }
   },
   "options": {
@@ -227,19 +245,19 @@
       },
       "name": "X10 all units off"
     },
-    "update_property": {
-      "name": "Update property",
-      "description": "Writes one configuration property (operating flag, extended property or derived setting such as ramp rate) to an Insteon device and saves it.",
+    "set_device_property": {
+      "name": "Set device property",
+      "description": "Writes one configuration property (operating flag, extended property or derived setting such as ramp rate) to an Insteon device and saves it. The same change the Insteon panel makes under Device properties.",
       "fields": {
-        "target_device": {
+        "device_id": {
           "name": "Device",
           "description": "The Insteon device to update."
         },
-        "prop_name": {
+        "property": {
           "name": "Property",
-          "description": "Property name as shown in the Insteon panel, for example led_off, led_dimming, on_level, ramp_rate or toggle_mode."
+          "description": "Property name as shown in the Insteon panel, for example led_off, led_dimming, on_level, ramp_rate_in_seconds or toggle_button_a."
         },
-        "prop_value": {
+        "value": {
           "name": "Value",
           "description": "New value as text. Booleans accept true/false, numbers are parsed and range-checked, and mode properties accept their mode name."
         }

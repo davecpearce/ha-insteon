@@ -1,4 +1,4 @@
-"""Tests for the fork-only insteon.update_property action."""
+"""Tests for the fork-only insteon.set_device_property action."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -9,16 +9,16 @@ from pytest_homeassistant.common import MockConfigEntry, load_json_object_fixtur
 
 from homeassistant.components import insteon
 from homeassistant.components.insteon.const import (
-    CONF_PROP_NAME,
-    CONF_PROP_VALUE,
-    CONF_TARGET_DEVICE,
+    ATTR_PROPERTY,
+    ATTR_VALUE,
     DOMAIN,
-    SRV_UPDATE_PROPERTY,
+    SRV_SET_DEVICE_PROPERTY,
 )
 from homeassistant.components.insteon.services import async_setup_services
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.const import ATTR_DEVICE_ID
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 
 from .mock_devices import MockDevices
@@ -52,8 +52,8 @@ async def _setup(hass: HomeAssistant, kpl_properties_data) -> tuple[MockDevices,
 async def _call(hass: HomeAssistant, device_id: str, name: str, value: str) -> None:
     await hass.services.async_call(
         DOMAIN,
-        SRV_UPDATE_PROPERTY,
-        {CONF_TARGET_DEVICE: device_id, CONF_PROP_NAME: name, CONF_PROP_VALUE: value},
+        SRV_SET_DEVICE_PROPERTY,
+        {ATTR_DEVICE_ID: device_id, ATTR_PROPERTY: name, ATTR_VALUE: value},
         blocking=True,
     )
 
@@ -61,7 +61,7 @@ async def _call(hass: HomeAssistant, device_id: str, name: str, value: str) -> N
 async def test_service_registered(hass: HomeAssistant) -> None:
     """The action is registered alongside the core ones."""
     async_setup_services(hass)
-    assert hass.services.has_service(DOMAIN, SRV_UPDATE_PROPERTY)
+    assert hass.services.has_service(DOMAIN, SRV_SET_DEVICE_PROPERTY)
 
 
 async def test_not_loaded(hass: HomeAssistant) -> None:
@@ -139,13 +139,13 @@ async def test_mode_property(hass: HomeAssistant, kpl_properties_data) -> None:
 @pytest.mark.parametrize(
     ("name", "value", "match"),
     [
-        ("no_such_property", "1", "not found"),
-        ("led_off", "maybe", "Invalid value"),
-        (LED_DIMMING, "200", "Invalid value"),
-        (LED_DIMMING, "bright", "Invalid value"),
-        (RAMP_RATE_IN_SEC, "fast", "Invalid value"),
-        (f"{TOGGLE_BUTTON}_c", "sideways", "Invalid value"),
-        ("radio_button_groups", "1,2", "Insteon panel"),
+        ("no_such_property", "1", "property_not_found|does not exist"),
+        ("led_off", "maybe", "invalid_value|not a valid value"),
+        (LED_DIMMING, "200", "invalid_value|not a valid value"),
+        (LED_DIMMING, "bright", "invalid_value|not a valid value"),
+        (RAMP_RATE_IN_SEC, "fast", "invalid_value|not a valid value"),
+        (f"{TOGGLE_BUTTON}_c", "sideways", "invalid_value|not a valid value"),
+        ("radio_button_groups", "1,2", "invalid_value|Insteon panel"),
     ],
 )
 async def test_bad_input_raises(
@@ -170,7 +170,7 @@ async def test_unknown_device_raises(hass: HomeAssistant, kpl_properties_data) -
 
     with (
         patch.object(insteon.services, "devices", devices),
-        pytest.raises(ServiceValidationError, match="not found for device ID"),
+        pytest.raises(ServiceValidationError, match="device_not_found|was not found"),
     ):
         await _call(hass, "does-not-exist", "led_off", "true")
 
@@ -182,7 +182,7 @@ async def test_write_failure_raises(hass: HomeAssistant, kpl_properties_data) ->
 
     with (
         patch.object(insteon.services, "devices", devices),
-        pytest.raises(ServiceValidationError, match="rejected the write"),
+        pytest.raises(HomeAssistantError, match="write_failed|did not accept"),
     ):
         await _call(hass, device_id, "led_off", "true")
 

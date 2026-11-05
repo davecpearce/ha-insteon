@@ -132,14 +132,14 @@ add_default_links:
       example: "light.1a2b3c"
       selector:
         text:
-update_property:
+set_device_property:
   fields:
-    target_device:
+    device_id:
       required: true
       selector:
         device:
           integration: insteon
-    prop_name:
+    property:
       required: true
       example: "led_off"
       selector:
@@ -214,7 +214,7 @@ update_property:
             - "toggle_button_h"
             - "two_groups_on"
             - "x10_off"
-    prop_value:
+    value:
       required: true
       example: "true"
       selector:

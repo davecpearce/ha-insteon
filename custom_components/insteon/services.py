@@ -6,7 +6,7 @@ import logging
 import probatio
 from pyinsteon import devices
 from pyinsteon.address import Address
-from pyinsteon.constants import RelayMode, ResponseStatus, ToggleMode
+from pyinsteon.constants import ResponseStatus
 from pyinsteon.managers.link_manager import (
     async_enter_linking_mode,
     async_enter_unlinking_mode,
@@ -23,13 +23,14 @@ from pyinsteon.managers.x10_manager import (
 from pyinsteon.x10_address import create as create_x10_address
 
 from homeassistant.const import (
+    ATTR_DEVICE_ID,
     CONF_ADDRESS,
     CONF_ENTITY_ID,
     CONF_PLATFORM,
     ENTITY_MATCH_ALL,
 )
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -41,11 +42,10 @@ from homeassistant.helpers.service import async_register_admin_service
 from .const import (
     CONF_CAT,
     CONF_DIM_STEPS,
+    ATTR_PROPERTY,
+    ATTR_VALUE,
     CONF_HOUSECODE,
-    CONF_PROP_NAME,
-    CONF_PROP_VALUE,
     CONF_SUBCAT,
-    CONF_TARGET_DEVICE,
     CONF_UNITCODE,
     DOMAIN,
     SIGNAL_ADD_DEFAULT_LINKS,
@@ -72,7 +72,7 @@ from .const import (
     SRV_PRINT_IM_ALDB,
     SRV_SCENE_OFF,
     SRV_SCENE_ON,
-    SRV_UPDATE_PROPERTY,
+    SRV_SET_DEVICE_PROPERTY,
     SRV_X10_ALL_LIGHTS_OFF,
     SRV_X10_ALL_LIGHTS_ON,
     SRV_X10_ALL_UNITS_OFF,
@@ -83,22 +83,23 @@ from .schemas import (
     DEL_ALL_LINK_SCHEMA,
     LOAD_ALDB_SCHEMA,
     PRINT_ALDB_SCHEMA,
+    SET_DEVICE_PROPERTY_SCHEMA,
     TRIGGER_SCENE_SCHEMA,
-    UPDATE_PROPERTY_SCHEMA,
     X10_HOUSECODE_SCHEMA,
 )
-from .api.properties import _validate_int
+from .api.properties import update_property
 from .utils import print_aldb_to_log
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _coerce_property_value(prop, name: str, raw: str, groups):
-    """Convert the string a service call carries into the property's native type.
+def _coerce_property_value(prop, raw: str):
+    """Turn the text a service call carries into what the panel API would send.
 
-    Mirrors what the Insteon panel does through the websocket API, but the
-    service schema only accepts strings so the parsing lives here. Integers go
-    through the same range and button-mask validation as the panel.
+    The panel's update_property handles integers (range-checked), mode names and
+    lists itself; booleans and floats arrive from the panel already typed, so
+    those are parsed here. Lists are rejected: radio_button_groups is a
+    multi-select in the panel and has no sensible single-field text form.
     """
     value_type = prop.value_type
     if value_type is bool:
@@ -108,20 +109,9 @@ def _coerce_property_value(prop, name: str, raw: str, groups):
         if lowered in ("false", "off", "no", "0"):
             return False
         raise ValueError(f"expected true/false, got {raw!r}")
-    if value_type is int:
-        return _validate_int(name, raw, groups)
     if value_type is float:
         return float(raw)
-    if value_type in (ToggleMode, RelayMode):
-        try:
-            return getattr(value_type, raw.strip().upper())
-        except AttributeError as err:
-            raise ValueError(
-                f"expected one of {[m.name.lower() for m in value_type]}, got {raw!r}"
-            ) from err
     if value_type is list:
-        # radio_button_groups: a list of button groups. Not expressible as one
-        # text field; the Insteon panel edits it with a proper multi-select.
         raise ValueError("list-valued properties can only be set from the Insteon panel")
     return raw
 
@@ -197,47 +187,42 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         # Future direction is to create an INSTEON control panel.
         print_aldb_to_log(devices.modem.aldb)
 
-    async def async_update_property(service: ServiceCall) -> None:
+    async def async_set_device_property(service: ServiceCall) -> None:
         """Write one configuration property to an Insteon device and persist it.
 
-        Fork addition: the same operation the Insteon panel performs, exposed as
-        an action so automations can change device settings (LED brightness,
-        ramp rate, ...).
+        The same operation the Insteon panel performs through its websocket API,
+        exposed as an action so automations can change device settings.
         """
         _async_check_loaded(hass)
-        target_device = service.data[CONF_TARGET_DEVICE]
-        prop_name = service.data[CONF_PROP_NAME]
-        prop_value = service.data[CONF_PROP_VALUE]
+        device_id = service.data[ATTR_DEVICE_ID]
+        prop_name = service.data[ATTR_PROPERTY]
+        raw_value = service.data[ATTR_VALUE]
 
-        dev_registry = dr.async_get(hass)
-        ha_device = dev_registry.async_get(target_device)
+        ha_device = dr.async_get(hass).async_get(device_id)
         if not ha_device:
             raise ServiceValidationError(
-                f"Home Assistant device not found for device ID {target_device}"
+                translation_domain=DOMAIN,
+                translation_key="device_not_found",
+                translation_placeholders={"device_id": device_id},
             )
-
         insteon_address = next(
             (ident[1] for ident in ha_device.identifiers if ident[0] == DOMAIN),
             None,
         )
         if not insteon_address:
             raise ServiceValidationError(
-                f"Device {target_device} is not an Insteon device"
+                translation_domain=DOMAIN,
+                translation_key="not_insteon_device",
+                translation_placeholders={"device_id": device_id},
             )
-
-        try:
-            insteon_device = devices[Address(insteon_address)]
-        except (KeyError, ValueError) as err:
-            raise ServiceValidationError(
-                f"Insteon device not found for address {insteon_address}: {err}"
-            ) from err
+        insteon_device = devices[Address(insteon_address)]
         if insteon_device is None:
             raise ServiceValidationError(
-                f"Insteon device not found for address {insteon_address}"
+                translation_domain=DOMAIN,
+                translation_key="insteon_device_not_found",
+                translation_placeholders={"address": insteon_address},
             )
 
-        # Same lookup order as the panel: configuration holds the standard
-        # properties and derived settings, the other two hold advanced ones.
         for props in (
             insteon_device.configuration,
             insteon_device.operating_flags,
@@ -248,22 +233,39 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                 break
         else:
             raise ServiceValidationError(
-                f"Property {prop_name} not found on device {insteon_address}"
+                translation_domain=DOMAIN,
+                translation_key="property_not_found",
+                translation_placeholders={
+                    "property": prop_name,
+                    "address": insteon_address,
+                },
             )
 
         try:
-            prop.new_value = _coerce_property_value(
-                prop, prop_name, prop_value, insteon_device.groups
+            update_property(
+                insteon_device, prop_name, _coerce_property_value(prop, raw_value)
             )
-        except (TypeError, ValueError, probatio.Invalid) as err:
+        except (AttributeError, TypeError, ValueError, probatio.Invalid) as err:
             raise ServiceValidationError(
-                f"Invalid value for property {prop_name}: {err}"
+                translation_domain=DOMAIN,
+                translation_key="invalid_value",
+                translation_placeholders={
+                    "property": prop_name,
+                    "value": raw_value,
+                    "error": str(err),
+                },
             ) from err
 
         result = await insteon_device.async_write_config()
         if result not in (ResponseStatus.SUCCESS, ResponseStatus.RUN_ON_WAKE):
-            raise ServiceValidationError(
-                f"Device {insteon_address} rejected the write of {prop_name}: {result}"
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="write_failed",
+                translation_placeholders={
+                    "property": prop_name,
+                    "address": insteon_address,
+                    "result": str(result),
+                },
             )
         async with save_lock:
             await devices.async_save(workdir=hass.config.config_dir)
@@ -421,9 +423,9 @@ def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     )
     hass.services.async_register(
         DOMAIN,
-        SRV_UPDATE_PROPERTY,
-        async_update_property,
-        schema=UPDATE_PROPERTY_SCHEMA,
+        SRV_SET_DEVICE_PROPERTY,
+        async_set_device_property,
+        schema=SET_DEVICE_PROPERTY_SCHEMA,
     )
     async_dispatcher_connect(hass, SIGNAL_SAVE_DEVICES, async_srv_save_devices)
     async_dispatcher_connect(
