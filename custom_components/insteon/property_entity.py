@@ -6,21 +6,19 @@ regular Home Assistant entities: they are config-category, disabled by default,
 and write through the same pyinsteon calls the panel uses.
 """
 
-from __future__ import annotations
-
 import asyncio
-from collections.abc import Callable
 import functools
 import logging
 from typing import Any
 
 from pyinsteon import devices
-from pyinsteon.config import LED_DIMMING, LED_OFF
-from pyinsteon.constants import DeviceAction, ResponseStatus
+from pyinsteon.config import LED_DIMMING, LED_OFF, ON_LEVEL, RAMP_RATE, RAMP_RATE_IN_SEC
+from pyinsteon.constants import RAMP_RATES_SEC, DeviceAction, ResponseStatus
 
 from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.select import SelectEntity
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -35,6 +33,23 @@ _LOGGER = logging.getLogger(__name__)
 
 # devices.async_save rewrites the whole device file; serialise concurrent writes.
 _SAVE_LOCK = asyncio.Lock()
+
+# Insteon stores the on level as 0-255; the entity shows it as a percentage.
+ON_LEVEL_MAX = 255
+
+
+def _ramp_rate_label(seconds: float) -> str:
+    """Label one of the device's fixed ramp rates, e.g. '0.5 s' or '1.5 min'."""
+    if seconds >= 60:
+        return f"{seconds / 60:g} min"
+    return f"{seconds:g} s"
+
+
+# The device supports 31 fixed ramp rates between 0.1 s and 8 min; pyinsteon
+# snaps any number of seconds to the nearest one. Offer exactly those.
+RAMP_RATE_OPTIONS: dict[str, float] = {
+    _ramp_rate_label(seconds): seconds for seconds in sorted(RAMP_RATES_SEC)
+}
 
 
 def find_property(device, name: str):
@@ -73,11 +88,17 @@ class InsteonPropertyEntity(Entity):
             "insteon_property": self.property_name,
         }
 
+    @property
+    def _change_source(self):
+        """Return the pyinsteon property whose changes should refresh the state."""
+        return self._prop
+
     async def async_added_to_hass(self) -> None:
         """Follow the property and the device-removal signal."""
-        self._prop.subscribe(self._async_property_updated)
+        source = self._change_source
+        source.subscribe(self._async_property_updated)
         self.async_on_remove(
-            functools.partial(self._prop.unsubscribe, self._async_property_updated)
+            functools.partial(source.unsubscribe, self._async_property_updated)
         )
         remove_signal = f"{self._insteon_device.address.id}_{SIGNAL_REMOVE_ENTITY}"
         self.async_on_remove(
@@ -90,7 +111,7 @@ class InsteonPropertyEntity(Entity):
 
     @callback
     def _async_property_updated(self, name, value) -> None:
-        """pyinsteon reports a new value after a read or a confirmed write."""
+        """Pyinsteon reports a new value after a read or a confirmed write."""
         self.async_write_ha_state()
 
     async def async_update(self) -> None:
@@ -164,6 +185,59 @@ class InsteonLedSwitch(InsteonPropertyEntity, SwitchEntity):
         await self._async_write(True)
 
 
+class InsteonOnLevelNumber(InsteonPropertyEntity, NumberEntity):
+    """Level a dimmer goes to when switched on locally, as a percentage."""
+
+    property_name = ON_LEVEL
+    _attr_translation_key = "on_level"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_mode = NumberMode.SLIDER
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the on level as a percentage of full brightness."""
+        if self._prop.value is None:
+            return None
+        return round(self._prop.value * 100 / ON_LEVEL_MAX)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Write the on level, converting the percentage to the device's 0-255."""
+        await self._async_write(round(value * ON_LEVEL_MAX / 100))
+
+
+class InsteonRampRateSelect(InsteonPropertyEntity, SelectEntity):
+    """How long a dimmer takes to reach its on level, one of 31 fixed rates.
+
+    Reads and writes go through pyinsteon's derived ramp_rate_in_seconds
+    property; change notifications come from the raw ramp_rate property it
+    wraps, which fires on every read and confirmed write.
+    """
+
+    property_name = RAMP_RATE_IN_SEC
+    _attr_translation_key = "ramp_rate"
+    _attr_options = list(RAMP_RATE_OPTIONS)
+
+    @property
+    def _change_source(self):
+        """Follow the raw ramp_rate property."""
+        return self._insteon_device.properties[RAMP_RATE]
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the label of the device's ramp rate."""
+        if self._prop.value is None:
+            return None
+        label = _ramp_rate_label(self._prop.value)
+        return label if label in RAMP_RATE_OPTIONS else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Write the chosen ramp rate."""
+        await self._async_write(RAMP_RATE_OPTIONS[option])
+
+
 @callback
 def async_setup_property_entities(
     hass: HomeAssistant,
@@ -173,7 +247,10 @@ def async_setup_property_entities(
     """Add entity_cls for every device that has its property, now and later."""
 
     def _entities_for(device) -> list[InsteonPropertyEntity]:
-        if device is devices.modem or find_property(device, entity_cls.property_name) is None:
+        if (
+            device is devices.modem
+            or find_property(device, entity_cls.property_name) is None
+        ):
             return []
         return [entity_cls(device)]
 
