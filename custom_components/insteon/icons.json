@@ -41,6 +41,14 @@
     "number": {
       "led_brightness": {
         "default": "mdi:brightness-6"
+      },
+      "on_level": {
+        "default": "mdi:brightness-percent"
+      }
+    },
+    "select": {
+      "ramp_rate": {
+        "default": "mdi:timer-outline"
       }
     },
     "switch": {

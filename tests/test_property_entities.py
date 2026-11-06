@@ -1,11 +1,10 @@
-"""Tests for the fork-only LED property entities (number and switch)."""
+"""Tests for the fork-only device configuration entities (number, select, switch)."""
 
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 from pubsub import pub
-
-from pyinsteon.config import LED_DIMMING, LED_OFF
+from pyinsteon.config import LED_DIMMING, LED_OFF, ON_LEVEL, RAMP_RATE, RAMP_RATE_IN_SEC
 from pyinsteon.constants import ResponseStatus
 import pytest
 from pytest_homeassistant.common import MockConfigEntry, load_json_object_fixture
@@ -21,6 +20,11 @@ from homeassistant.components.number import (
     ATTR_VALUE,
     DOMAIN as NUMBER_DOMAIN,
     SERVICE_SET_VALUE,
+)
+from homeassistant.components.select import (
+    ATTR_OPTION,
+    DOMAIN as SELECT_DOMAIN,
+    SERVICE_SELECT_OPTION,
 )
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import (
@@ -76,7 +80,7 @@ def platforms_only():
     """Only set up the platforms under test."""
     with patch(
         "homeassistant.components.insteon.INSTEON_PLATFORMS",
-        (Platform.NUMBER, Platform.SWITCH),
+        (Platform.NUMBER, Platform.SELECT, Platform.SWITCH),
     ):
         yield
 
@@ -113,7 +117,7 @@ def kpl_properties_data_fixture():
 
 
 async def _setup(hass: HomeAssistant, kpl_properties_data) -> tuple[str, str]:
-    """Set up the integration and return the two entity ids for the KeypadLinc."""
+    """Set up the integration and return the LED entity ids for the KeypadLinc."""
     await devices.async_load()
     devices.fill_properties(KPL, kpl_properties_data)
     device = devices[KPL]
@@ -124,6 +128,8 @@ async def _setup(hass: HomeAssistant, kpl_properties_data) -> tuple[str, str]:
             for prop in (
                 device.properties[LED_DIMMING],
                 device.operating_flags[LED_OFF],
+                device.properties[ON_LEVEL],
+                device.properties[RAMP_RATE],
             ):
                 if prop.is_dirty:
                     prop.set_value(prop.new_value)
@@ -246,3 +252,92 @@ async def test_external_change_updates_state(
         devices[KPL].properties[LED_DIMMING].set_value(77)
     await hass.async_block_till_done()
     assert hass.states.get(number_id).state == "77"
+
+
+def _entity_id(hass: HomeAssistant, platform: str, prop: str) -> str:
+    """Return the KeypadLinc's entity id for one property."""
+    entity_id = er.async_get(hass).async_get_entity_id(
+        platform, DOMAIN, f"{devices[KPL].id}_{prop}"
+    )
+    assert entity_id
+    return entity_id
+
+
+async def test_on_level_is_a_percentage(
+    hass: HomeAssistant, kpl_properties_data
+) -> None:
+    """The on level shows 0-255 as a percentage and writes it back as 0-255."""
+    await _setup(hass, kpl_properties_data)
+    number_id = _entity_id(hass, NUMBER_DOMAIN, ON_LEVEL)
+
+    state = hass.states.get(number_id)
+    assert state.state == "100"  # fixture on_level is 255
+    assert state.attributes["unit_of_measurement"] == "%"
+    assert state.attributes["max"] == 100
+
+    await hass.services.async_call(
+        NUMBER_DOMAIN,
+        SERVICE_SET_VALUE,
+        {ATTR_ENTITY_ID: number_id, ATTR_VALUE: 40},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert devices[KPL].properties[ON_LEVEL].value == 102
+    assert hass.states.get(number_id).state == "40"
+
+
+async def test_ramp_rate_select_options_and_write(
+    hass: HomeAssistant, kpl_properties_data
+) -> None:
+    """The ramp rate is one of the device's fixed rates, labelled in seconds."""
+    await _setup(hass, kpl_properties_data)
+    select_id = _entity_id(hass, SELECT_DOMAIN, RAMP_RATE_IN_SEC)
+
+    state = hass.states.get(select_id)
+    assert state.state == "0.5 s"  # fixture ramp_rate code 28
+    options = state.attributes["options"]
+    assert len(options) == 31
+    assert options[0] == "0.1 s"
+    assert options[-1] == "8 min"
+    assert "1.5 min" in options
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: select_id, ATTR_OPTION: "2 min"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    devices[KPL].async_write_config.assert_awaited_once()
+    assert devices[KPL].properties[RAMP_RATE].value == 0x0A  # 120 s
+    assert devices[KPL].configuration[RAMP_RATE_IN_SEC].value == 120
+    assert hass.states.get(select_id).state == "2 min"
+
+
+async def test_ramp_rate_same_option_does_not_write(
+    hass: HomeAssistant, kpl_properties_data
+) -> None:
+    """Selecting the current ramp rate is a no-op."""
+    await _setup(hass, kpl_properties_data)
+    select_id = _entity_id(hass, SELECT_DOMAIN, RAMP_RATE_IN_SEC)
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: select_id, ATTR_OPTION: "0.5 s"},
+        blocking=True,
+    )
+    devices[KPL].async_write_config.assert_not_awaited()
+
+
+async def test_ramp_rate_follows_raw_property(
+    hass: HomeAssistant, kpl_properties_data
+) -> None:
+    """A ramp rate learned from the device updates the select."""
+    await _setup(hass, kpl_properties_data)
+    select_id = _entity_id(hass, SELECT_DOMAIN, RAMP_RATE_IN_SEC)
+
+    with publish_to_exact_listeners_only():
+        devices[KPL].properties[RAMP_RATE].set_value(0x1B)  # 2 s
+    await hass.async_block_till_done()
+    assert hass.states.get(select_id).state == "2 s"
